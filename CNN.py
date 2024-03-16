@@ -37,22 +37,17 @@ test_transform = transforms.Compose([
 train_data = datasets.CIFAR10(root='./data', train=True, download=True, transform=train_transform)
 test_data = datasets.CIFAR10(root='./data', train=False, download=True, transform=test_transform)
 
-# Define your two classes indices based on the CIFAR-10 dataset
-class_indices = [0, 1]  # Replace with your chosen classes
+class_indices = [0, 1]  
 
-# Now, filter out the data for the two selected classes
 train_indices = [i for i, label in enumerate(train_data.targets) if label in class_indices]
 test_indices = [i for i, label in enumerate(test_data.targets)]
 
-# Split training indices for training and validation sets
 train_indices, val_indices = train_test_split(train_indices, test_size=0.2, random_state=42, stratify=[train_data.targets[i] for i in train_indices])
 
-# Create subsets for train, validation, and test
 train_subset = Subset(train_data, train_indices)
 val_subset = Subset(train_data, val_indices)
 test_subset = Subset(test_data, test_indices)
 
-# DataLoaders for the datasets
 batch_size = 64
 train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=False)
@@ -60,37 +55,32 @@ test_loader = DataLoader(test_subset, batch_size=batch_size, shuffle=False)
 
 from torchvision import models
 
-# Load a pretrained ResNet18 model
 model = models.resnet18(pretrained=True)
 
-# Replace the last fully connected layer with a binary classifier
 num_ftrs = model.fc.in_features
 model.fc = nn.Linear(num_ftrs, 2)
 
-# Transfer the model to GPU if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = model.to(device)
 
-# Loss function and optimizer
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
 
-# Function to train the model
 def train_model(model, criterion, optimizer, scheduler, num_epochs=10):
-    model.train()  # Set model to training mode
+    model.train()  
     for epoch in range(num_epochs):
         for inputs, labels in train_loader:
             inputs, labels = inputs.to(device), labels.to(device)
 
-            optimizer.zero_grad()  # Zero the gradients
+            optimizer.zero_grad()  
 
-            outputs = model(inputs)  # Forward pass
-            loss = criterion(outputs, labels)  # Compute loss
-            loss.backward()  # Backward pass
-            optimizer.step()  # Optimize weights
+            outputs = model(inputs)  
+            loss = criterion(outputs, labels)  
+            loss.backward()  
+            optimizer.step() 
 
-        scheduler.step()  # Update learning rate
+        scheduler.step() 
 
         print(f'Epoch {epoch+1}/{num_epochs} completed.')
     return model
@@ -98,9 +88,8 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=10):
 # Train the model
 model_ft = train_model(model, criterion, optimizer, scheduler, num_epochs=10)
 
-# Function to evaluate the model
 def evaluate_model(model, dataloader):
-    model.eval()  # Set the model to evaluation mode
+    model.eval()  
     corrects = 0
     total = 0
     with torch.no_grad():
@@ -113,6 +102,5 @@ def evaluate_model(model, dataloader):
     accuracy = corrects / total
     print(f'Test Accuracy: {accuracy:.4f}')
 
-# Evaluate the model
 evaluate_model(model_ft, test_loader)
 
