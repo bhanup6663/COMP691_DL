@@ -85,21 +85,17 @@ import torch
 from torchvision import datasets, transforms
 from torch.utils.data import Subset, DataLoader
 
-# Assuming cifar_train and cifar_val are already defined and loaded
 
 def create_data_loaders(seed, num_classes=10, samples_per_class=25):
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    # Determine class indices
     all_class_indices = [np.where(np.array(cifar_train.targets) == i)[0] for i in range(num_classes)]
 
-    # Select random samples for each class
     train_indices = []
     for class_indices in all_class_indices:
         train_indices.extend(np.random.choice(class_indices, samples_per_class, replace=False))
 
-    # Assuming we validate on the first 100 examples of each class
     val_indices = np.concatenate([class_indices[:100] for class_indices in all_class_indices])
 
     train_subset = Subset(cifar_train, train_indices)
@@ -110,7 +106,6 @@ def create_data_loaders(seed, num_classes=10, samples_per_class=25):
 
     return train_loader, val_loader
 
-# Use a fixed seed for reproducibility
 fixed_seed = 1
 train_loader, val_loader = create_data_loaders(fixed_seed)
 
@@ -181,7 +176,6 @@ def test(model, device, test_loader):
             all_preds.extend(preds.view(-1).cpu().numpy())
             all_targets.extend(target.view(-1).cpu().numpy())
 
-    # Calculate overall accuracy
     accuracy = np.mean(np.array(all_preds) == np.array(all_targets))
 
     # Generate a classification report
