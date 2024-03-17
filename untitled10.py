@@ -15,6 +15,8 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import Subset, DataLoader
 from numpy.random import RandomState
+from sklearn.metrics import classification_report
+
 
 class Net(nn.Module):
     def __init__(self):
@@ -26,20 +28,25 @@ class Net(nn.Module):
             nn.Conv2d(16, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2)
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),  # New layer
+            nn.BatchNorm2d(64),  # New layer
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2)  # New layer
         )
         self.fc_layers = nn.Sequential(
             nn.Dropout(0.25),
-            nn.Linear(32 * 8 * 8, 128),
+            nn.Linear(64 * 4 * 4, 256),  # Adjusted for new layer
             nn.ReLU(inplace=True),
-            nn.Linear(128, 10)
+            nn.Linear(256, 10)
         )
 
     def forward(self, x):
         x = self.conv_layers(x)
-        x = x.view(-1, 32 * 8 * 8)
+        x = x.view(-1, 64 * 4 * 4)  # Adjusted for new layer
         x = self.fc_layers(x)
         return x
+
 
 normalize = transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])
 transform_train = transforms.Compose([
@@ -57,28 +64,6 @@ transform_val = transforms.Compose([
 
 cifar_train = datasets.CIFAR10(root='.', train=True, download=True, transform=transform_train)
 cifar_val = datasets.CIFAR10(root='.', train=False, transform=transform_val)
-
-# def create_data_loaders(seed):
-#     np.random.seed(seed)
-#     torch.manual_seed(seed)
-
-#     # Randomly select two classes
-#     classes = np.random.choice(range(10), 2, replace=False)
-
-#     train_indices = []
-#     for class_id in classes:
-#         class_indices = np.random.choice(np.where(np.array(cifar_train.targets) == class_id)[0], 25, replace=False)
-#         train_indices.extend(class_indices)
-
-#     val_indices = np.arange(1000)
-
-#     train_subset = Subset(cifar_train, train_indices)
-#     val_subset = Subset(cifar_val, val_indices)
-
-#     train_loader = DataLoader(train_subset, batch_size=25, shuffle=True)
-#     val_loader = DataLoader(val_subset, batch_size=100, shuffle=False)
-
-#     return train_loader, val_loader
 
 
 
@@ -105,20 +90,36 @@ def create_data_loaders(seed, num_classes=10, samples_per_class=25):
 fixed_seed = 1
 train_loader, val_loader = create_data_loaders(fixed_seed)
 
-# Now you can print out some statistics to check the distribution
 train_class_counts = np.bincount(np.array([label for _, labels in train_loader for label in labels]))
 val_class_counts = np.bincount(np.array([label for _, labels in val_loader for label in labels]))
 
 print(f"Training class counts: {train_class_counts}")
 print(f"Validation class counts: {val_class_counts}")
 
-def train(model, device, train_loader, optimizer, epoch):
+def mixup_data(x, y, alpha=1.0, device='cuda'):
+    '''Compute the mixup data. Return mixed inputs, pairs of targets, and lambda'''
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1
+    batch_size = x.size()[0]
+    index = torch.randperm(batch_size).to(device)
+    
+    mixed_x = lam * x + (1 - lam) * x[index, :]
+    y_a, y_b = y, y[index]
+    return mixed_x, y_a, y_b, lam
+
+
+def train(model, device, train_loader, optimizer, criterion, epoch, alpha=1.0):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
-        output = model(data)
-        loss = F.cross_entropy(output, target)
+
+        mixed_data, target_a, target_b, lam = mixup_data(data, target, alpha, device)
+        output = model(mixed_data)
+        loss = lam * criterion(output, target_a) + (1 - lam) * criterion(output, target_b)
+        
         loss.backward()
         optimizer.step()
 
@@ -131,7 +132,7 @@ def test(model, device, test_loader):
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            test_loss += F.cross_entropy(output, target, reduction='sum').item()
+            test_loss += F.cross_entropy(output, target, reduction='sum').item()  # Or use criterion if needed
             pred = output.argmax(dim=1, keepdim=True)
             correct += pred.eq(target.view_as(pred)).sum().item()
 
@@ -139,26 +140,36 @@ def test(model, device, test_loader):
     accuracy = 100. * correct / len(test_loader.dataset)
     return test_loss, accuracy
 
+
+
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+class_counts = [np.sum(np.array(cifar_train.targets) == i) for i in range(10)]
+total = np.sum(class_counts)
+class_weights = torch.tensor([total/class_counts[i] for i in range(10)], dtype=torch.float32).to(device)
+criterion = nn.CrossEntropyLoss(weight=class_weights)
 
 
 for seed in range(1, 11):
     model = Net().to(device)
     #optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9, weight_decay=0.0005)
-    optimizer = optim.RMSprop(model.parameters(), lr=0.0001 , weight_decay=1e-4)
+    optimizer = optim.RMSprop(model.parameters(), lr=0.0001 , momentum=0.9, weight_decay=1e-4)
+    #optimizer = optim.RMSprop(model.parameters(), lr=0.001, weight_decay=1e-4)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
 
 
     train_loader, val_loader = create_data_loaders(seed)
 
     num_epochs = 10
     for epoch in range(1, num_epochs + 1):
-        train(model, device, train_loader, optimizer, epoch)
-
+        train(model, device, train_loader, optimizer, criterion, epoch, alpha=0.2)  
+        scheduler.step() 
 
     test_loss, accuracy = test(model, device, val_loader)
-    print(f'Seed: {seed}, Test Loss: {test_loss:.4f}, Accuracy: {accuracy:.2f}%')
 
-from sklearn.metrics import classification_report
+
 
 def test(model, device, test_loader):
     model.eval()
@@ -172,6 +183,7 @@ def test(model, device, test_loader):
             all_preds.extend(preds.view(-1).cpu().numpy())
             all_targets.extend(target.view(-1).cpu().numpy())
 
+    # Calculate overall accuracy
     accuracy = np.mean(np.array(all_preds) == np.array(all_targets))
 
     # Generate a classification report
