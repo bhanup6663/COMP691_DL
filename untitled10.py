@@ -80,10 +80,6 @@ cifar_val = datasets.CIFAR10(root='.', train=False, transform=transform_val)
 
 #     return train_loader, val_loader
 
-import numpy as np
-import torch
-from torchvision import datasets, transforms
-from torch.utils.data import Subset, DataLoader
 
 
 def create_data_loaders(seed, num_classes=10, samples_per_class=25):
