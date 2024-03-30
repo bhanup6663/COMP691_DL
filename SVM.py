@@ -1,51 +1,68 @@
-import torch
-import torchvision
-import torchvision.transforms as transforms
-from sklearn.svm import SVC
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
 import numpy as np
+import torch
+from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
+from sklearn.svm import SVC
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import classification_report, accuracy_score
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader, Subset
 import random
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
 
 transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
 
-trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=len(trainset), shuffle=False)
+train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
+test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 
-testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
-testloader = torch.utils.data.DataLoader(testset, batch_size=len(testset), shuffle=False)
+def filter_by_class(dataset, classes):
+    indices = [i for i, (_, label) in enumerate(dataset) if label in classes]
+    return Subset(dataset, indices)
 
-def extract_data(loader):
-    for data in loader:
-        images, labels = data
-        images = images.numpy().reshape(images.size(0), -1)
+classes = random.sample(range(10), 2)
+filtered_train_dataset = filter_by_class(train_dataset, classes)
+filtered_test_dataset = filter_by_class(test_dataset, classes)
+
+train_loader = DataLoader(filtered_train_dataset, batch_size=len(filtered_train_dataset), shuffle=True)
+test_loader = DataLoader(filtered_test_dataset, batch_size=len(filtered_test_dataset), shuffle=False)
+
+# Extract features and labels from loaders
+def extract_features_and_labels(loader):
+    for images, labels in loader:
+        features = images.view(images.size(0), -1).numpy()
         labels = labels.numpy()
-        return images, labels
+        return features, labels
 
-x_train, y_train = extract_data(trainloader)
-x_test, y_test = extract_data(testloader)
+x_train, y_train = extract_features_and_labels(train_loader)
+x_test, y_test = extract_features_and_labels(test_loader)
 
-def select_random_classes(y_train, num_classes=2):
-    classes = np.unique(y_train)
-    return random.sample(list(classes), num_classes)
+# Define a pipeline with feature extraction and SVM classifier
+pipeline = Pipeline([
+    ('feature_extraction', PCA(n_components=50)),  
+    ('clf', SVC(kernel='linear', random_state=42))  
+])
 
-train_classes = select_random_classes(y_train)
-train_indices = np.where((y_train == train_classes[0]) | (y_train == train_classes[1]))[0]
-x_train, y_train = x_train[train_indices], y_train[train_indices]
+param_grid = {
+    'feature_extraction': [PCA(n_components=50), LDA(n_components=1)],
+    'clf__C': [0.1, 1, 10],
+    'clf__kernel': ['linear'] 
+}
 
-x_train, _, y_train, _ = train_test_split(x_train, y_train, train_size=50, stratify=y_train)
-y_train = y_train.ravel()
+grid_search = GridSearchCV(pipeline, param_grid, cv=3, n_jobs=-1, verbose=3)
 
-x_test, _, y_test, _ = train_test_split(x_test, y_test, test_size=10, stratify=y_test)
-y_test = y_test.ravel()
+# Perform the grid search
+grid_search.fit(x_train, y_train)
 
-svm_model = SVC(kernel='linear')
-svm_model.fit(x_train, y_train)
-    
-predictions = svm_model.predict(x_test)
+print(f"Best Parameters: {grid_search.best_params_}")
+best_model = grid_search.best_estimator_
+predictions = best_model.predict(x_test)
+validation_accuracy = accuracy_score(y_test, predictions) * 100
+print(f"Validation Accuracy: {validation_accuracy:.2f}%")
 print(classification_report(y_test, predictions))
