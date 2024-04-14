@@ -1,0 +1,28 @@
+Due Date: April 25 at Noon. Late submissions may not be graded.
+
+What to Submit:
+
+1) Your report (in PDF format)
+2) Code that can reproduce your final results for Challenge 1 and 2. This should be provided as a standalone .ipynb, .py, or zipped folder with multiple scripts. The code should train and test on 50 seeds from the testbed.
+3) (Optional) Appendix with code snippets for other methods you explored.
+
+Challenge 1 Submission Details:
+- Report the average and standard deviation of the final training and evaluation results, using a minimum of 10 splits.
+
+Challenge 2 Submission Details:
+- If your method takes a long time to run, you can use a minimum of 5 seeds.
+Ensure the code is easy to follow and reproducible, even if the setup is complex.
+Report Guidelines:
+
+Discuss the training and testing time of your methods compared to the baseline (e.g. "my method is 2x slower than the baseline").
+
+For Challenge 2, include a 1 paragraph discussion on the complexity of implementing your final approach, such as challenges with hyperparameter tuning or external library requirements.
+
+The report length should be approximately 3-10 pages (2 column, 11pt font), not including appendices.
+
+The literature review should be 1 page per graduate student.
+The literature review can cover related work that is slightly different from your final methods, if relevant.
+Alternative Project Submission:
+
+Follow the same general guidelines, with a clearly written report including literature review (at least 1 paper per grad student) and optional readable code snippets.
+Report length should follow the 3-10 page guideline.
